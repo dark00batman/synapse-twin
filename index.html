@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SynapseTwin - Industrial Robotic Arm Digital Twin</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+
+        body {
+            background: #0b0f19;
+            overflow: hidden;
+            color: #f3f4f6;
+        }
+
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        /* Top HUD */
+        .header {
+            position: absolute;
+            top: 20px;
+            left: 24px;
+            z-index: 10;
+            background: rgba(15, 23, 42, 0.75);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 16px 20px;
+        }
+
+        .header h1 {
+            font-size: 18px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            color: #38bdf8;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .header p {
+            font-size: 12px;
+            color: #94a3b8;
+            margin-top: 4px;
+        }
+
+        .status-badge {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #22c55e;
+        }
+
+        /* Telemetry Sidebar */
+        .sidebar {
+            position: absolute;
+            top: 20px;
+            right: 24px;
+            z-index: 10;
+            width: 320px;
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .sidebar h2 {
+            font-size: 14px;
+            text-transform: uppercase;
+            color: #94a3b8;
+            letter-spacing: 1px;
+        }
+
+        .metric-card {
+            background: rgba(30, 41, 59, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            padding: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .metric-card .label {
+            font-size: 12px;
+            color: #cbd5e1;
+        }
+
+        .metric-card .val {
+            font-size: 16px;
+            font-weight: 600;
+            font-family: monospace;
+            color: #38bdf8;
+        }
+
+        /* Controls Panel */
+        .controls-panel {
+            position: absolute;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            background: rgba(15, 23, 42, 0.9);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 40px;
+            padding: 8px 16px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .btn {
+            padding: 10px 18px;
+            border: none;
+            border-radius: 24px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .btn-fault {
+            background: #ef4444;
+            color: white;
+        }
+
+        .btn-fault:hover {
+            background: #dc2626;
+            transform: translateY(-1px);
+        }
+
+        .btn-reset {
+            background: #1e293b;
+            color: #cbd5e1;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .btn-reset:hover {
+            background: #334155;
+        }
+
+        /* Alert Banner */
+        .alert-banner {
+            position: absolute;
+            top: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            background: rgba(239, 68, 68, 0.9);
+            backdrop-filter: blur(8px);
+            padding: 10px 24px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            display: none;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 4px 20px rgba(239, 68, 68, 0.4);
+        }
+    </style>
+    <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+
+<body>
+    <div id="canvas-container"></div>
+
+    <div class="header">
+        <h1><span class="status-badge" id="status-dot"></span> SynapseTwin 6-Axis Digital Twin</h1>
+        <p>Client-Side Edge Inference & Spatial Anomaly Detection</p>
+    </div>
+
+    <div class="alert-banner" id="alert-banner">
+        ⚠️ ANOMALY DETECTED: Harmonic Drift at Joint 3 (Elbow) — Score: <span id="alert-score">0.00</span>
+    </div>
+
+    <div class="sidebar">
+        <h2>Real-time Telemetry</h2>
+        <div class="metric-card">
+            <span class="label">Inference Engine</span>
+            <span class="val" style="color: #4ade80;">WASM/WebGPU (60 Hz)</span>
+        </div>
+        <div class="metric-card">
+            <span class="label">J3 Vibration RMS</span>
+            <span class="val" id="val-vibration">1.22 mm/s</span>
+        </div>
+        <div class="metric-card">
+            <span class="label">J3 Actuator Temp</span>
+            <span class="val" id="val-temp">42.4 °C</span>
+        </div>
+        <div class="metric-card">
+            <span class="label">Anomaly Reconstruction Loss</span>
+            <span class="val" id="val-loss">0.024</span>
+        </div>
+    </div>
+
+    <div class="controls-panel">
+        <button class="btn btn-fault" id="btn-inject">⚡ Inject J3 Bearing Anomaly</button>
+        <button class="btn btn-reset" id="btn-reset">↺ Normalize System</button>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // 1. Scene Setup
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0a0f1d);
+        scene.fog = new THREE.FogExp2(0x0a0f1d, 0.035);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+        camera.position.set(5, 4, 6);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        container.appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.target.set(0, 1.5, 0);
+
+        // 2. Lighting & Grid
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0x38bdf8, 2.5);
+        dirLight.position.set(5, 8, 5);
+        dirLight.castShadow = true;
+        scene.add(dirLight);
+
+        const floorGrid = new THREE.GridHelper(20, 20, 0x1e293b, 0x0f172a);
+        floorGrid.position.y = 0;
+        scene.add(floorGrid);
+
+        // 3. Materials
+        const metalMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.3, metalness: 0.8 });
+        const jointMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.2, metalness: 0.5 });
+        const j3Mat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.2, metalness: 0.5 });
+
+        // 4. Procedural Kinematic Robot Hierarchy
+        const robotRoot = new THREE.Group();
+        scene.add(robotRoot);
+
+        // Base
+        const baseMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.9, 0.3, 32), metalMat);
+        baseMesh.position.y = 0.15;
+        robotRoot.add(baseMesh);
+
+        // J1: Turntable
+        const j1Group = new THREE.Group();
+        j1Group.position.y = 0.3;
+        robotRoot.add(j1Group);
+        const j1Mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.4, 32), jointMat);
+        j1Mesh.position.y = 0.2;
+        j1Group.add(j1Mesh);
+
+        // J2: Shoulder
+        const j2Group = new THREE.Group();
+        j2Group.position.y = 0.4;
+        j1Group.add(j2Group);
+        const arm1 = new THREE.Mesh(new THREE.BoxGeometry(0.3, 1.5, 0.3), metalMat);
+        arm1.position.y = 0.75;
+        j2Group.add(arm1);
+
+        // J3: Elbow (Anomaly Target)
+        const j3Group = new THREE.Group();
+        j3Group.position.y = 1.5;
+        j2Group.add(j3Group);
+        const j3Mesh = new THREE.Mesh(new THREE.SphereGeometry(0.28, 32, 32), j3Mat);
+        j3Group.add(j3Mesh);
+
+        // Forearm & Tool Flange
+        const arm2 = new THREE.Mesh(new THREE.BoxGeometry(0.22, 1.2, 0.22), metalMat);
+        arm2.position.y = 0.6;
+        j3Group.add(arm2);
+
+        const toolGroup = new THREE.Group();
+        toolGroup.position.y = 1.2;
+        j3Group.add(toolGroup);
+        const toolMesh = new THREE.Mesh(new THREE.ConeGeometry(0.15, 0.3, 16), jointMat);
+        toolMesh.rotation.x = Math.PI;
+        toolGroup.add(toolMesh);
+
+        // 5. Telemetry & Client-Side Anomaly Engine State
+        let isAnomaly = false;
+        let anomalyScore = 0.02;
+        let vibration = 1.2;
+        let temperature = 42.0;
+        let targetCameraPos = new THREE.Vector3(5, 4, 6);
+        let targetLookAt = new THREE.Vector3(0, 1.5, 0);
+
+        const alertBanner = document.getElementById('alert-banner');
+        const alertScore = document.getElementById('alert-score');
+        const statusDot = document.getElementById('status-dot');
+        const valVib = document.getElementById('val-vibration');
+        const valTemp = document.getElementById('val-temp');
+        const valLoss = document.getElementById('val-loss');
+
+        document.getElementById('btn-inject').addEventListener('click', () => {
+            isAnomaly = true;
+            statusDot.style.background = '#ef4444';
+            alertBanner.style.display = 'flex';
+
+            // Auto-Director: Camera smoothly zooms into the affected Joint 3
+            targetCameraPos.set(1.5, 2.6, 2.0);
+            targetLookAt.set(0, 2.2, 0);
+        });
+
+        document.getElementById('btn-reset').addEventListener('click', () => {
+            isAnomaly = false;
+            statusDot.style.background = '#22c55e';
+            alertBanner.style.display = 'none';
+            j3Mat.emissive.setHex(0x000000);
+
+            targetCameraPos.set(5, 4, 6);
+            targetLookAt.set(0, 1.5, 0);
+        });
+
+        // 6. Real-Time Render & Simulation Loop
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const t = clock.getElapsedTime();
+
+            // Kinematic continuous assembly motion
+            j1Group.rotation.y = Math.sin(t * 0.8) * 0.7;
+            j2Group.rotation.z = Math.sin(t * 1.2) * 0.3;
+            j3Group.rotation.z = Math.cos(t * 1.0) * 0.5;
+
+            // Simulated Machine Learning Inference Loop
+            if (isAnomaly) {
+                anomalyScore = THREE.MathUtils.lerp(anomalyScore, 0.94 + Math.random() * 0.05, 0.05);
+                vibration = THREE.MathUtils.lerp(vibration, 7.85 + Math.sin(t * 20.0) * 0.8, 0.08);
+                temperature = THREE.MathUtils.lerp(temperature, 84.5, 0.02);
+
+                // Visual Heatmap Pulse on Joint 3
+                const pulse = (Math.sin(t * 10) + 1.0) * 0.5;
+                j3Mat.emissive.setRGB(0.9 * pulse + 0.1, 0.05, 0.0);
+            } else {
+                anomalyScore = THREE.MathUtils.lerp(anomalyScore, 0.02 + Math.random() * 0.01, 0.05);
+                vibration = THREE.MathUtils.lerp(vibration, 1.2 + Math.random() * 0.1, 0.08);
+                temperature = THREE.MathUtils.lerp(temperature, 42.0, 0.02);
+            }
+
+            // Update UI Telemetry
+            valLoss.innerText = anomalyScore.toFixed(3);
+            valVib.innerText = vibration.toFixed(2) + " mm/s";
+            valTemp.innerText = temperature.toFixed(1) + " °C";
+            alertScore.innerText = anomalyScore.toFixed(3);
+
+            // Smooth Camera & Target Interpolation
+            camera.position.lerp(targetCameraPos, 0.04);
+            controls.target.lerp(targetLookAt, 0.04);
+            controls.update();
+
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+
+</html>
